@@ -14,7 +14,6 @@ Platformă pentru coordonarea activităților sportive (evenimente + chat + “d
   - **DB**: Firestore
   - **Observabilitate**: Analytics (`src/lib/analytics.ts`)
 - **Hărți**: Google Maps (`@vis.gl/react-google-maps`)
-- **AI**: Google Gemini (`@google/genai`)
 - **Testare**: Vitest (+ coverage v8)
 
 ---
