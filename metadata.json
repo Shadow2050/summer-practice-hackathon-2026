@@ -1,0 +1,12 @@
+{
+  "name": "ShowUp2Move",
+  "description": "Smart social sports-matching platform for spontaneous activities. Find local groups, match with players, and show up to move.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "AI-powered matching",
+    "Real-time chat",
+    "Availability tracking"
+  ]
+}

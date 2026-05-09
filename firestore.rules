@@ -1,0 +1,153 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ---------------------------------------------------------
+    // GLOBAL HELPERS
+    // ---------------------------------------------------------
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    function incoming() {
+      return request.resource.data;
+    }
+    
+    function existing() {
+      return resource.data;
+    }
+    
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ---------------------------------------------------------
+    // USERS
+    // ---------------------------------------------------------
+    
+    match /users/{userId} {
+      function isValidUser(data) {
+        return data.uid == request.auth.uid 
+          && data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 100
+          && (data.get('bio', '') is string && data.get('bio', '').size() <= 500)
+          && data.sportsInterests is list && data.sportsInterests.size() <= 20;
+      }
+
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().uid == request.auth.uid;
+      allow update: if isOwner(userId) && isValidUser(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'bio', 'sportsInterests', 'skillLevels', 'availabilityStatus', 'lastActive', 'location']);
+    }
+
+    match /users/{userId}/notifications/{notificationId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && incoming().type is string;
+      allow update: if request.auth != null && request.auth.uid == userId && incoming().diff(existing()).affectedKeys().hasOnly(['isRead']);
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Following subcollection — social graph
+    match /users/{userId}/following/{followedUserId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId) && incoming().followedUserId is string;
+      allow delete: if isOwner(userId);
+    }
+
+    // ---------------------------------------------------------
+    // AVAILABILITIES
+    // ---------------------------------------------------------
+    
+    match /availabilities/{availabilityId} {
+      function isValidAvailability(data) {
+        return data.userId == request.auth.uid
+          && data.date is string && data.date.size() == 10
+          && data.isAvailable is bool;
+      }
+
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidAvailability(incoming());
+      allow update: if isOwner(existing().userId) && isValidAvailability(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['isAvailable', 'sports', 'updatedAt']);
+      allow delete: if isOwner(existing().userId);
+    }
+
+    // ---------------------------------------------------------
+    // EVENTS
+    // ---------------------------------------------------------
+    
+    match /events/{eventId} {
+      function isValidEvent(data) {
+        return data.get('sport', '') is string && data.get('sport', '').size() > 0
+          && data.get('title', '') is string && data.get('title', '').size() > 0
+          && data.get('time', '') is string && data.get('time', '').size() > 0
+          && data.get('location', {}) is map 
+          && data.get('participants', []) is list
+          && data.get('status', '') in ['proposed', 'confirmed', 'completed', 'cancelled'];
+      }
+
+      function isParticipant() {
+        return isSignedIn() && (request.auth.uid in resource.data.participants);
+      }
+
+      function isCaptain() {
+        return isSignedIn() && resource.data.captainId == request.auth.uid;
+      }
+
+      function isValidParticipantUpdate() {
+        let isJoin = incoming().participants.size() == existing().participants.size() + 1
+          && incoming().participants.hasAll(existing().participants)
+          && (request.auth.uid in incoming().participants)
+          && !(request.auth.uid in existing().participants);
+          
+        let isLeave = existing().participants.size() == incoming().participants.size() + 1
+          && existing().participants.hasAll(incoming().participants)
+          && !(request.auth.uid in incoming().participants)
+          && (request.auth.uid in existing().participants);
+          
+        return isJoin || isLeave;
+      }
+
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (incoming().captainId == request.auth.uid || incoming().captainId == 'system');
+      allow update: if isSignedIn() && (
+        // Action: Join/Leave (and potentially confirm status)
+        ((incoming().diff(existing()).affectedKeys().hasOnly(['participants']) || incoming().diff(existing()).affectedKeys().hasOnly(['participants', 'status'])) && isValidParticipantUpdate()) ||
+        // Action: Update details (Captain only)
+        (isCaptain() && isValidEvent(incoming()) && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'time', 'location', 'status', 'maxParticipants', 'minParticipants', 'priceInfo']))
+      );
+      allow delete: if isCaptain();
+    }
+
+    // ---------------------------------------------------------
+    // MESSAGES
+    // ---------------------------------------------------------
+    
+    match /events/{eventId}/messages/{messageId} {
+      function isEventParticipant() {
+        let ev = get(/databases/$(database)/documents/events/$(eventId));
+        return request.auth != null && ev != null && (request.auth.uid in ev.data.participants);
+      }
+
+      allow read: if isEventParticipant();
+      allow create: if isEventParticipant() && incoming().senderId == request.auth.uid 
+        && incoming().text is string && incoming().text.size() <= 1000;
+      allow update: if isEventParticipant() && incoming().diff(existing()).affectedKeys().hasOnly(['pollData']);
+      allow delete: if false; 
+    }
+  }
+}

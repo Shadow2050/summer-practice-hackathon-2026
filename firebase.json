@@ -1,0 +1,17 @@
+{
+  "firestore": {
+    "database": "ai-studio-2c216f23-bcf6-4952-8595-c478a0b088fc",
+    "location": "europe-west1",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "auth": {
+    "providers": {
+      "anonymous": true,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "ShowUp2Move",
+        "supportEmail": "stanasebastian37@gmail.com"
+      }
+    }
+  }
+}

@@ -1,258 +1,344 @@
-# 🏆 Hackathon Challenge — ShowUp2Move
+# ShowUp2Move ⚡
 
-## 🎯 Theme
-
-Build a **smart social sports-matching platform** that helps people quickly organize spontaneous sports activities with others nearby.
+Platformă pentru coordonarea activităților sportive (evenimente + chat + “discover/swipe” + recomandări), construită cu **React (Vite)** pe frontend și **Firebase** ca backend (Auth + Firestore + Rules + Indexes + Analytics). AI-ul folosește **Google Gemini** prin `@google/genai`, cu răspunsuri **structurate JSON** și **timeout** ca UI-ul să nu “înghețe”.
 
 ---
 
-## 📝 Challenge Brief
+## Tehnologii (stack)
 
-Modern schedules make it difficult to maintain fixed sports groups or recurring activities. People want to stay active, but coordinating with others takes too much effort.
-
-Your challenge is to build **ShowUp2Move** — a platform that enables users to:
-
-- describe themselves quickly,
-- specify sports preferences,
-- declare daily/weekly availability with minimal effort,
-- automatically find compatible groups,
-- coordinate events,
-- and ultimately… just **show up and move**.
-
-The experience should be:
-
-- ⚡ fast,
-- 🪶 low-friction,
-- 🤝 social,
-- 🌍 and useful in real-world scenarios.
+- **Frontend**: React + Vite + TypeScript
+- **Routing**: `react-router-dom`
+- **Data fetching / cache**: TanStack Query (`@tanstack/react-query`)
+- **Backend**: Firebase
+  - **Auth**: Google Sign-In
+  - **DB**: Firestore
+  - **Observabilitate**: Analytics (`src/lib/analytics.ts`)
+- **Hărți**: Google Maps (`@vis.gl/react-google-maps`)
+- **AI**: Google Gemini (`@google/genai`)
+- **Testare**: Vitest (+ coverage v8)
 
 ---
 
-## 💡 Core Concept
+## TL;DR arhitectură
 
-A user:
+Aplicația este “single-page app” (SPA). “Backend”-ul este în mare parte Firebase (serverless managed), iar codul de integrare stă în `src/lib/*` și `src/services/*`.
 
-1. Creates a lightweight profile
-2. Adds preferred sports
-3. Responds to a periodic **“ShowUpToday?”** prompt with Yes/No
-4. Gets matched into a suitable sports group
-5. Joins a group chat
-6. Confirms participation
-7. Receives help coordinating location/logistics
-8. Shows up and plays
+Fluxul mare (simplificat):
 
-The platform should support:
-
-- automatic sport group generation,
-- manual event creation,
-- group coordination,
-- location assistance,
-- and lightweight social interaction.
+```mermaid
+flowchart LR
+  UI[React pages/components] --> Hooks[TanStack Query hooks]
+  Hooks --> Services[src/services/*]
+  Services --> FS[Firestore]
+  UI --> Auth[Firebase Auth]
+  Auth --> FS
+  UI --> AI[Gemini via @google/genai]
+  UI --> Maps[Google Maps API]
+  FS --> Rules[firestore.rules]
+  FS --> Indexes[firestore.indexes.json]
+```
 
 ---
 
-## ✨ Expected Features
+## Structura proiectului (ce e unde)
 
-### 1. User Profiles
-
-Users should be able to:
-
-- add a short description,
-- upload a profile picture (optional),
-- specify sports interests,
-- optionally define skill level/preferences.
-
-### 2. Availability System
-
-The system should:
-
-- ask users periodically (**“ShowUpToday?”**),
-- allow one-click **Yes/No** responses,
-- track availability for upcoming activities.
-
-### 3. Smart Matching
-
-The platform should match users based on:
-
-- sport preferences,
-- availability,
-- group size requirements,
-- optional proximity/location,
-
-…and generate appropriate groups automatically.
-
-**Examples:**
-
-| Sport       | Group Size    |
-| ----------- | ------------- |
-| Football    | 10–14 people  |
-| Tennis      | 2–4 people    |
-| Basketball  | 6–10 people   |
-
-### 4. Captain Selection
-
-For each generated group:
-
-- randomly assign a captain,
-- provide coordination tools,
-- enable organization of the event.
-
-### 5. Group Chat
-
-Matched groups should have:
-
-- dedicated group communication,
-- event discussion,
-- coordination capabilities.
-
-### 6. Event Planning Assistance
-
-The app should assist captains with:
-
-- finding sports venues,
-- displaying pricing/options,
-- helping group members vote,
-- coordinating time/location.
-
-### 7. Manual Event Creation
-
-Users should also be able to:
-
-- manually create events,
-- invite/join participants,
-- specify sport/location/time/details.
+- **`src/main.tsx`**: entrypoint React (mount în `#root`).
+- **`src/App.tsx`**: compunerea aplicației:
+  - provideri globali (TanStack Query, Maps, Auth),
+  - routing,
+  - lazy-loading pentru pagini (bundle inițial mic).
+- **`src/contexts/AuthContext.tsx`**:
+  - ascultă `onAuthStateChanged`,
+  - creează profilul în Firestore la primul login,
+  - ține profilul sincronizat live prin `onSnapshot`.
+- **`src/lib/firebase.ts`**:
+  - inițializează Firebase App + Firestore + Auth,
+  - exportă `db` și `auth`,
+  - centralizează logging-ul erorilor Firestore (`handleFirestoreError`).
+- **`src/lib/analytics.ts`**: init analytics + helperi tipizați de tracking.
+- **`src/hooks/useEvents.ts`**: hooks TanStack Query care consumă `eventService`.
+- **`src/services/*`**: stratul de acces la date / integrare:
+  - `eventService.ts` (events + join/leave + pagination + notificări),
+  - `chatService.ts` (subcollection messages + polls + realtime),
+  - `notificationService.ts` (subcollection notifications + realtime),
+  - `followingService.ts` (social graph),
+  - `availabilityService.ts`, `sportsService.ts` etc.
+- **`src/pages/*`**: ecranele (Landing, Home, Discover, Events, EventDetail, Profile).
+- **`firestore.rules`**: securitate (Auth + validări + permisiuni).
+- **`firestore.indexes.json`**: indexuri necesare pentru query-uri compuse.
 
 ---
 
-## 🏅 Scoring System
+## “Backend”-ul: cum funcționează (Firebase)
 
-> Points are awarded **up to** the maximum listed below.
-> **Total Suggested Score: 7000+ points**
+### Autentificare
 
-### Mandatory Foundation
+- Login-ul se face prin **Google Sign-In** (popup).
+- Starea de auth e globală prin `AuthProvider`.
+- La primul login:
+  - se creează document în `users/{uid}` (profil).
+  - apoi profilul este ținut sincronizat în timp real.
 
-| Feature                                  | Points     |
-| ---------------------------------------- | ---------- |
-| Application runs successfully            | Up to 500p |
-| Functional frontend/backend integration  | Up to 300p |
-| Clean architecture & maintainability     | Up to 300p |
-| Responsive/mobile-friendly UI            | Up to 200p |
+Fișier relevant: `src/contexts/AuthContext.tsx`.
 
-### User Profiles
+### Baza de date (Firestore): model de date
 
-| Feature                          | Points     |
-| -------------------------------- | ---------- |
-| User registration/login          | Up to 300p |
-| User profile creation            | Up to 300p |
-| Sports preferences selection     | Up to 300p |
-| Profile photo upload             | Up to 200p |
-| Skill level/preferences support  | Up to 200p |
+Colecții principale (vezi `src/constants/index.ts`):
 
-### Smart Matching
+- **`events`**: evenimentele sportive
+  - status: `proposed | confirmed | completed | cancelled`
+  - participanți: `participants: string[]`
+  - captain: `captainId`
+- **`users`**: profilele utilizatorilor
+- **`availabilities`**: disponibilitate pe zile
 
-| Feature                                            | Points     |
-| -------------------------------------------------- | ---------- |
-| Availability “ShowUpToday?” system                 | Up to 500p |
-| Automatic sport matching                           | Up to 500p |
-| Matching users based on descriptions/interests     | Up to 500p |
-| Group-size aware matching                          | Up to 300p |
-| Nearby/proximity-based matching                    | Up to 500p |
-| Match confirmation workflow                        | Up to 300p |
+Subcolecții:
 
-### AI / Smart Enhancements
+- **`users/{userId}/following/{followedUserId}`**: social graph (“following”)
+- **`users/{userId}/notifications/{notificationId}`**: notificări in-app
+- **`events/{eventId}/messages/{messageId}`**: chat (realtime) + polls
 
-| Feature                                            | Points     |
-| -------------------------------------------------- | ---------- |
-| Identify sports/interests from profile description | Up to 500p |
-| Identify sports/interests from profile photo       | Up to 500p |
-| AI-generated compatibility scoring                 | Up to 300p |
-| Smart teammate recommendations                     | Up to 300p |
+Tipurile sunt definite în `src/types/index.ts`.
 
-### Communication
+### Securitate (Rules)
 
-| Feature                       | Points     |
-| ----------------------------- | ---------- |
-| Group chat implementation     | Up to 500p |
-| Event-specific group chat     | Up to 500p |
-| Notifications/reminders       | Up to 300p |
-| Real-time updates             | Up to 300p |
+Regulile din `firestore.rules`:
 
-### Event & Location Coordination
+- **Default deny** pe tot (`allow read, write: if false;`) și apoi “whitelist” pe colecții.
+- Protecții cheie:
+  - `users/{userId}`: create/update doar owner.
+  - `events/{eventId}`:
+    - read doar dacă ești logat,
+    - update join/leave permis doar dacă update-ul e valid (diferență de listă participanți),
+    - update detalii permis doar pentru captain.
+  - `events/{eventId}/messages/*`: acces doar pentru participanți (verifică event-ul cu `get()`).
 
-| Feature                          | Points      |
-| -------------------------------- | ----------- |
-| Automatic captain assignment     | Up to 300p  |
-| Auto-event setup                 | Up to 1000p |
-| Manual event creation            | Up to 500p  |
-| Venue/location suggestions       | Up to 500p  |
-| Price estimation for venues      | Up to 300p  |
-| Group voting/polling system      | Up to 500p  |
-| Maps/location assistance         | Up to 1000p |
+### Indexuri
 
-### Bonus Features
+`firestore.indexes.json` include indexuri compuse pentru query-uri precum:
 
-| Feature                          | Points     |
-| -------------------------------- | ---------- |
-| Calendar integration             | Up to 300p |
-| Weather-aware recommendations    | Up to 300p |
-| Team balancing by skill          | Up to 300p |
-| Gamification/achievements        | Up to 300p |
-| Multi-language support           | Up to 200p |
-| Social sharing/invites           | Up to 200p |
-| Wearables/fitness integrations   | Up to 500p |
+- `events` filtrat după `status` + ordonat după `time`
+- `events` după `status + sport + time`
+- `availabilities` după `userId + date`
 
-### Innovation Bonus
-
-Judges may award additional points for:
-
-- originality,
-- polished UX,
-- scalability,
-- exceptional AI usage,
-- technical creativity,
-- production readiness.
-
-| Category                  | Points      |
-| ------------------------- | ----------- |
-| Innovation & creativity   | Up to 1000p |
-| UX/UI quality             | Up to 500p  |
-| Technical excellence      | Up to 500p  |
+Dacă adaugi query-uri noi cu mai multe `where()` + `orderBy()`, probabil vei avea nevoie de index nou.
 
 ---
 
-## ⚖️ Judging Criteria
+## Frontend-ul: cum curge datele
 
-Teams will be evaluated based on:
+### Routing + lazy loading
 
-- Functionality
-- Stability
-- User experience
-- Technical implementation
-- Creativity
-- Real-world usefulness
-- Scalability potential
+`src/App.tsx` face lazy-load la pagini (Home/Profile/Events/EventDetail/Discover). Asta scade bundle-ul inițial: userul vede repede Landing/Loading, iar paginile “grele” se descarcă la navigare.
 
----
+### Fetching, cache și refresh
 
-## 📦 Expected Outcome
+Hook-urile (ex. `useEvents`) folosesc TanStack Query:
 
-By the end of the hackathon, teams should deliver:
-
-- a working prototype,
-- a short demo,
-- source code,
-- and a presentation explaining:
-  - the problem,
-  - the solution,
-  - architecture,
-  - and future improvements.
+- caching cu `staleTime` (30s),
+- refetch automat pe focus,
+- invalidare explicită după mutații (join/leave/create).
 
 ---
 
-## 🌟 Inspiration
+## AI (Gemini): cum e folosit și ce să știi
 
-The best solutions will make organizing spontaneous sports activities:
+`src/services/geminiService.ts` centralizează AI:
 
-- **frictionless**,
-- **fun**,
-- and **realistic for busy people**.
+- fiecare funcție trimite prompt + schema JSON,
+- parsează răspunsul,
+- este protejată cu `withTimeout` (10s).
+
+### Important (securitate)
+
+În forma curentă, cheia `GEMINI_API_KEY` este folosită în client. Pentru producție e recomandat:
+
+- să muți apelurile Gemini într-un backend (ex. Cloud Functions / server propriu),
+- sau să pui măsuri stricte (rate limit / App Check / proxy).
+
+(În roadmap ai deja direcția asta.)
+
+---
+
+## Config / variabile de mediu
+
+Acest proiect are nevoie (minim) de:
+
+- **Google Maps**: `VITE_GOOGLE_MAPS_PLATFORM_KEY` (vezi `src/App.tsx`)
+- **Gemini**: `VITE_GEMINI_API_KEY` (vezi `src/services/geminiService.ts`)
+
+Și are și fișierul de config Firebase:
+
+- `firebase-applet-config.json` (importat de `src/lib/firebase.ts`)
+
+---
+
+## Comenzi utile
+
+Instalare:
+
+```bash
+npm install
+```
+
+Dev server:
+
+```bash
+npm run dev
+```
+
+Build:
+
+```bash
+npm run build
+```
+
+Testare:
+
+```bash
+npm run test
+```
+
+Coverage:
+
+```bash
+npm run test:coverage
+```
+
+Typecheck (lint):
+
+```bash
+npm run lint
+```
+
+---
+
+## Troubleshooting (rapid)
+
+- **“permission-denied” în Firestore**:
+  - verifică dacă ești logat,
+  - verifică `firestore.rules`,
+  - uită-te în console la output-ul din `handleFirestoreError()` (include uid și path).
+- **Nu se încarcă harta**:
+  - lipsește `VITE_GOOGLE_MAPS_PLATFORM_KEY` sau e invalidă,
+  - `App.tsx` arată un ecran special “Google Maps API Key Required”.
+- **AI nu răspunde**:
+  - verifică `GEMINI_API_KEY`,
+  - există timeout de 10s; UI nu ar trebui să blocheze.
+
+---
+
+## Data flows pe pagini (ce se cheamă unde)
+
+### Landing (`src/pages/Landing.tsx`)
+
+- **Scop**: gate de autentificare (dacă `user === null`).
+- **Dependențe cheie**:
+  - `useAuth()` → `signIn()` pornește Google popup.
+
+### Home / Dashboard (`src/pages/Home.tsx`)
+
+- **Citește**:
+  - evenimente active (prin `useEvents()` → `eventService.fetchAllActiveEvents()` → `events`)
+  - profilul curent (din `AuthContext` → `users/{uid}`)
+- **Scrie**:
+  - disponibilitate (dacă pagina o gestionează) → `availabilities`
+  - tracking analytics (helperi din `src/lib/analytics.ts`)
+
+### Discover (`src/pages/Discover.tsx`)
+
+- **Scop**: swipe pe evenimente potrivite utilizatorului.
+- **Citește**:
+  - `usePotentialMatches(userId)` → `eventService.fetchPotentialMatches(userId)`
+    - citește profil user (`users/{uid}`) pentru `sportsInterests`
+    - listează evenimente active (`events`)
+  - `followingService.getFollowing(userId)` (dacă UI prioritizează “friends”)
+- **Scrie**:
+  - tracking swipe (ex. `trackSwipe`)
+
+### Events (`src/pages/Events.tsx`)
+
+- **Citește**:
+  - listă evenimente → `events`
+- **Scrie**:
+  - create event → `eventService.createEvent()` → `events`
+  - opțional: “AI suggest” titlu/locație → `geminiService.suggestEventTitle()` / `geminiService.suggestVenue()`
+
+### EventDetail (`src/pages/EventDetail.tsx`)
+
+- **Citește**:
+  - event by id → `eventService.getEvent(eventId)` → `events/{eventId}`
+  - chat realtime → `chatService.subscribeToMessages(eventId)` → `events/{eventId}/messages/*`
+- **Scrie**:
+  - join/leave → `eventService.joinEvent()` / `eventService.leaveEvent()`
+    - update `events/{eventId}.participants`
+    - posibil update `events/{eventId}.status` la confirmare
+    - create notificări → `users/{captainId}/notifications/*` sau către toți participanții la confirmare
+  - chat: send message/poll/vote → `chatService.*` → `events/{eventId}/messages/*`
+  - AI:
+    - compatibilitate → `geminiService.getCompatibilityScore()`
+    - balance teams (captain) → `geminiService.balanceTeams()`
+    - translate chat → `geminiService.translateChat()`
+
+### Profile (`src/pages/Profile.tsx`)
+
+- **Citește**:
+  - profil curent (realtime) → `users/{uid}` (prin `AuthContext`)
+- **Scrie**:
+  - update profil → `userService.updateProfile()` → `users/{uid}`
+  - AI extract interests → `geminiService.extractInterests()`
+
+---
+
+## Deploy / Hosting (opțiuni recomandate)
+
+### Opțiunea A — Firebase Hosting (clasic pentru Vite SPA)
+
+**Când e bună**: vrei hosting simplu + CDN + integrare naturală cu Firebase.
+
+- **Build**:
+
+```bash
+npm run build
+```
+
+- **Inițializează hosting** (din root):
+
+```bash
+npx -y firebase-tools@latest init hosting
+```
+
+Setări recomandate:
+- **public directory**: `dist`
+- **single-page app rewrite**: **YES** (important pentru `react-router-dom`)
+
+- **Deploy**:
+
+```bash
+npx -y firebase-tools@latest deploy --only hosting
+```
+
+### Opțiunea B — Vercel / Netlify (static hosting)
+
+**Când e bună**: vrei deploy rapid + preview deployments + CI simplu.
+
+Setări tipice:
+- **Build command**: `npm run build`
+- **Output directory**: `dist`
+- **SPA fallback/rewrite**: `/* → /index.html` (ca routing-ul să funcționeze la refresh)
+
+### Opțiunea C — Hosting + backend pentru AI (recomandat pentru producție)
+
+**Când e bună**: vrei ca `GEMINI_API_KEY` să nu ajungă în browser.
+
+Arhitectură:
+- frontend static (Hosting/Vercel/Netlify)
+- endpoint server-side (Cloud Functions / Cloud Run / server propriu) care cheamă Gemini
+- clientul cheamă endpoint-ul, nu direct Gemini
+
+## Roadmap (următorul nivel)
+
+- Mutarea logicii AI în backend (Cloud Functions) ca să nu expui cheia
+- Firebase App Check (anti-abuse)
+- Notificări push (FCM)
+- Optimizare “fetchAllProfiles” (paginare / query server-side)
